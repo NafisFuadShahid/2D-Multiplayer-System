@@ -19,8 +19,8 @@ class OfficeGame {
 
       // Asset paths
       this.assetPaths = {
-          floor: 'assets/floor_tile.png',
-          //wall: 'assets/wall_tile.png',
+          //floor: 'assets/floor_tile.png',
+          wall: 'assets/wall_tile.png',
           table: 'assets/table.png',
           chair: 'assets/chair.png',
           player: 'assets/player.png',

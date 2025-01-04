@@ -3,13 +3,42 @@ import java.util.UUID;
 
 public class Player {
     private String id;
+    private String direction;
     private String username;
     private double x;
     private double y;
     private String color;
+    private boolean isMoving;
+    private String animation;
+    private long timestamp;
 
     public Player() {
         this.id = UUID.randomUUID().toString();
+    }
+
+    // Add new getters and setters
+    public boolean getIsMoving() {
+        return isMoving;
+    }
+
+    public void setIsMoving(boolean isMoving) {
+        this.isMoving = isMoving;
+    }
+
+    public String getAnimation() {
+        return animation;
+    }
+
+    public void setAnimation(String animation) {
+        this.animation = animation;
+    }
+
+    public long getTimestamp() {
+        return timestamp;
+    }
+
+    public void setTimestamp(long timestamp) {
+        this.timestamp = timestamp;
     }
 
     // Getters and setters
@@ -51,5 +80,13 @@ public class Player {
 
     public void setColor(String color) {
         this.color = color;
+    }
+
+    public String getDirection() {
+        return direction;
+    }
+
+    public void setDirection(String direction) {
+        this.direction = direction;
     }
 }

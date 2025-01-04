@@ -5,6 +5,7 @@ import com.map.MetaHive.model.Player;
 import com.map.MetaHive.service.GameSessionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.stereotype.Controller;
 
@@ -14,23 +15,32 @@ public class PlayerController {
     @Autowired
     private GameSessionService gameSessionService;
 
+    @Autowired
+    private SimpMessagingTemplate messagingTemplate;
+
     @MessageMapping("/register")
-    @SendTo("/topic/players")
-    public Player registerPlayer(Player player) {
+    public void registerPlayer(Player player) {
         gameSessionService.addPlayer(player);
-        return player;
+        broadcastPlayerStates();
     }
 
     @MessageMapping("/move")
-    @SendTo("/topic/players")
-    public Player movePlayer(Player playerMovement) {
+    public void movePlayer(Player playerMovement) {
         Player existingPlayer = gameSessionService.getPlayerById(playerMovement.getId());
 
         if (existingPlayer != null) {
             existingPlayer.setX(playerMovement.getX());
             existingPlayer.setY(playerMovement.getY());
-        }
+            existingPlayer.setDirection(playerMovement.getDirection());
+            existingPlayer.setIsMoving(playerMovement.getIsMoving());
+            existingPlayer.setAnimation(playerMovement.getAnimation());
+            existingPlayer.setTimestamp(playerMovement.getTimestamp());
 
-        return existingPlayer;
+            broadcastPlayerStates();
+        }
+    }
+
+    private void broadcastPlayerStates() {
+        messagingTemplate.convertAndSend("/topic/players", gameSessionService.getAllPlayers());
     }
 }

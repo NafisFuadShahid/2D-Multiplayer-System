@@ -6,8 +6,8 @@ It's a **2D virtual office system** that supports multiplayer interactions. It w
 
 ## Technologies Used
 
-- 🗺️ **Tiled**: For designing the 2D map.
-- 🎮 **Kaboom.js**: For building the game logic.
+- 🗺️ **Tiled**: For designing the map.
+- 🎮 **Kaboom.js**: For the game logic.
 - 🌐 **Spring Boot**: WebSocket for real-time data exchange and seamless user interaction.
 
 ---

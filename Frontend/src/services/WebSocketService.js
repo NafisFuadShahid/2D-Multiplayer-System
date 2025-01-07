@@ -148,82 +148,52 @@ class WebSocketService {
     }
   }
 
-  async subscribeToRoom(roomId) {
-    console.log('Subscribing to room:', roomId);
-    if (this.client?.connected) {
-        if (this.roomSubscription) {
-            this.roomSubscription.unsubscribe();
-        }
+// In WebSocketService.js, modify the subscribeToRoom method:
 
-        return new Promise((resolve) => {
-            this.roomSubscription = this.client.subscribe(`/topic/rooms/${roomId}/players`, (message) => {
-              console.log('Received message for room:', roomId, message.body);
-                try {
-                    console.log('Received player update:', message.body);
-                    const players = JSON.parse(message.body);
-                    
-                    Object.entries(players).forEach(([id, player]) => {
-                      console.log('Processing player:', id, player);
-                        // Don't update current player's data from server
-                        if (id !== this.currentPlayer?.id) {
-                            if (this.players[id]) {
-                                player.prevX = this.players[id].x;
-                                player.prevY = this.players[id].y;
-                                player.lastUpdate = Date.now();
-                            } else {
-                                console.log('New player joined:', player.username);
-                                player.prevX = player.x;
-                                player.prevY = player.y;
-                                player.lastUpdate = Date.now();
-                            }
-                            this.players[id] = player;
-                        }
-                    });
+subscribeToRoom(roomId) {
+  if (this.client?.connected) {
+      if (this.roomSubscription) {
+          this.roomSubscription.unsubscribe();
+      }
 
-                    // Remove disconnected players
-                    Object.keys(this.players).forEach(id => {
-                        if (!players[id]) {
-                            console.log('Player disconnected:', this.players[id].username);
-                            delete this.players[id];
-                        }
-                    });
+      return new Promise((resolve) => {
+          this.roomSubscription = this.client.subscribe(`/topic/rooms/${roomId}/players`, (message) => {
+              try {
+                  console.log('Received player update:', message.body);
+                  const players = JSON.parse(message.body);
+                  
+                  if (this.onPlayerUpdate) {
+                      // Pass all players directly to the callback
+                      this.onPlayerUpdate(players);
+                  }
+              } catch (error) {
+                  console.error('Error handling player update:', error);
+              }
+          });
 
-                    if (this.onPlayerUpdate) {
-                        this.onPlayerUpdate(this.players);
-                    }
-                } catch (error) {
-                    console.error('Error handling player update:', error);
-                }
-            }, {
-                // Add STOMP subscription headers if needed
-                id: `room-subscription-${roomId}`
-            });
+          // Register the current player after subscription is ready
+          setTimeout(() => {
+              this.currentPlayer = {
+                  id: `${this.username}-${Date.now()}`, // Make ID unique
+                  username: this.username,
+                  x: 0,
+                  y: 0,
+                  direction: 'down',
+                  isMoving: false,
+                  animation: 'idle-down',
+                  lastUpdate: Date.now(),
+                  roomId: roomId
+              };
 
-            // Register the current player after subscription is ready
-            setTimeout(() => {
-                if (!this.currentPlayer) {
-                    this.currentPlayer = {
-                        id: Math.random().toString(36).substr(2, 9),
-                        username: this.username,
-                        x: 0,
-                        y: 0,
-                        direction: 'down',
-                        isMoving: false,
-                        animation: 'idle-down',
-                        lastUpdate: Date.now(),
-                        roomId: roomId
-                    };
-
-                    console.log('Registering player in room:', roomId, this.currentPlayer);
-                    
-                    this.client.publish({
-                        destination: '/app/register',
-                        body: JSON.stringify(this.currentPlayer)
-                    });
-                }
-                resolve();
-            }, 500);
-        });
+              console.log('Registering player in room:', roomId, this.currentPlayer);
+              
+              this.client.publish({
+                  destination: '/app/register',
+                  body: JSON.stringify(this.currentPlayer)
+              });
+              resolve();
+          }, 500);
+      });
     }
     return Promise.reject(new Error('WebSocket not connected'));
   }

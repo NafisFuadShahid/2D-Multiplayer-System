@@ -46,7 +46,6 @@ public class PlayerController {
 
         // Send response back to the client
         messagingTemplate.convertAndSend("/queue/joinResult", response);
-
     }
 
     @MessageMapping("/register")

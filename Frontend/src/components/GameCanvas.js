@@ -112,84 +112,86 @@ function GameCanvas({ playerName }) {
         ]);
 
         // Improved player update handling with interpolation
+        // In GameCanvas.js, modify the WebSocket player update handler:
+
         WebSocketService.setOnPlayerUpdate((players) => {
           const currentTime = Date.now();
           
           Object.entries(players).forEach(([id, playerData]) => {
-            if (id !== playerName) {
-              if (!otherPlayers.current[id]) {
-                // Add new player with interpolation state and default direction
-                const otherPlayer = k.add([
-                  k.sprite("player"),
-                  k.pos(playerData.x, playerData.y),
-                  k.area({ width: 32, height: 32 }),
-                  k.anchor("center"),
-                  { 
-                    id,
-                    username: playerData.username,
-                    isMoving: playerData.isMoving,
-                    direction: playerData.direction || "down", // Set default direction
-                    targetX: playerData.x,
-                    targetY: playerData.y,
-                    startX: playerData.x,
-                    startY: playerData.y,
-                    interpolationStart: currentTime,
-                  },
-                ]);
+              if (id !== playerName) {  // Only handle other players
+                  if (!otherPlayers.current[id]) {
+                      // Add new player
+                      const otherPlayer = k.add([
+                          k.sprite("player"),
+                          k.pos(playerData.x, playerData.y),
+                          k.area({ width: 32, height: 32 }),
+                          k.anchor("center"),
+                          { 
+                              id,
+                              username: playerData.username,
+                              isMoving: playerData.isMoving,
+                              direction: playerData.direction || "down",
+                              targetX: playerData.x,
+                              targetY: playerData.y,
+                              startX: playerData.x,
+                              startY: playerData.y,
+                              interpolationStart: currentTime,
+                          },
+                      ]);
 
-                // Set initial animation
-                otherPlayer.play(playerData.isMoving ? 
-                  `run-${playerData.direction || "down"}` : 
-                  `idle-${playerData.direction || "down"}`
-                );
+                      // Set initial animation
+                      otherPlayer.play(playerData.isMoving ? 
+                          `run-${playerData.direction}` : 
+                          `idle-${playerData.direction}`
+                      );
 
-                const otherPlayerNameTag = k.add([
-                  k.text(playerData.username, { size: 16, color: k.rgb(255, 255, 255) }),
-                  k.pos(playerData.x, playerData.y - 20),
-                  k.anchor("center"),
-                ]);
+                      const otherPlayerNameTag = k.add([
+                          k.text(playerData.username, { size: 16, color: k.rgb(255, 255, 255) }),
+                          k.pos(playerData.x, playerData.y - 20),
+                          k.anchor("center"),
+                      ]);
 
-                otherPlayers.current[id] = {
-                  sprite: otherPlayer,
-                  nameTag: otherPlayerNameTag,
-                  lastUpdate: currentTime,
-                  direction: playerData.direction || "down", // Store direction in the reference
-                };
-              } else {
-                const otherPlayer = otherPlayers.current[id];
-                
-                // Update interpolation targets
-                otherPlayer.sprite.startX = otherPlayer.sprite.pos.x;
-                otherPlayer.sprite.startY = otherPlayer.sprite.pos.y;
-                otherPlayer.sprite.targetX = playerData.x;
-                otherPlayer.sprite.targetY = playerData.y;
-                otherPlayer.sprite.interpolationStart = currentTime;
-                
-                // Update direction with fallback
-                otherPlayer.direction = playerData.direction || otherPlayer.direction || "down";
+                      otherPlayers.current[id] = {
+                          sprite: otherPlayer,
+                          nameTag: otherPlayerNameTag,
+                          lastUpdate: currentTime,
+                          direction: playerData.direction || "down",
+                      };
+                      
+                      console.log('Added new player:', id);
+                  } else {
+                      const otherPlayer = otherPlayers.current[id];
+                      
+                      // Update interpolation targets
+                      otherPlayer.sprite.startX = otherPlayer.sprite.pos.x;
+                      otherPlayer.sprite.startY = otherPlayer.sprite.pos.y;
+                      otherPlayer.sprite.targetX = playerData.x;
+                      otherPlayer.sprite.targetY = playerData.y;
+                      otherPlayer.sprite.interpolationStart = currentTime;
+                      
+                      // Update direction and animation
+                      otherPlayer.direction = playerData.direction || otherPlayer.direction;
+                      const targetAnim = playerData.isMoving ? 
+                          `run-${otherPlayer.direction}` : 
+                          `idle-${otherPlayer.direction}`;
 
-                // Update animation state with safe direction
-                const currentAnim = otherPlayer.sprite.curAnim;
-                const targetAnim = playerData.isMoving ? 
-                  `run-${otherPlayer.direction}` : 
-                  `idle-${otherPlayer.direction}`;
+                      if (otherPlayer.sprite.curAnim !== targetAnim) {
+                          otherPlayer.sprite.play(targetAnim);
+                      }
 
-                if (currentAnim !== targetAnim) {
-                  otherPlayer.sprite.play(targetAnim);
-                }
-
-                otherPlayer.lastUpdate = currentTime;
+                      otherPlayer.lastUpdate = currentTime;
+                  }
               }
-            }
           });
 
           // Clean up disconnected players
           Object.keys(otherPlayers.current).forEach((id) => {
-            if (!players[id]) {
-              otherPlayers.current[id].sprite.destroy();
-              otherPlayers.current[id].nameTag.destroy();
-              delete otherPlayers.current[id];
-            }
+              if (!players[id]) {
+                  console.log('Removing disconnected player:', id);
+                  otherPlayers.current[id].sprite.destroy();
+                  otherPlayers.current[id].nameTag.destroy();
+                  delete otherPlayers.current[id];
+              }
           });
         });
 

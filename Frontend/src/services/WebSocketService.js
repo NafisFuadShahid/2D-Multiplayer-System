@@ -1,201 +1,289 @@
-// WebSocketService.js
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 
 class WebSocketService {
   constructor() {
     this.client = null;
+    this.connectionPromise = null;
     this.players = {};
     this.onPlayerUpdate = null;
     this.currentPlayer = null;
+    this.currentRoom = null;
+    this.movementInterval = null;
     this.lastUpdate = Date.now();
-    this.updateRate = 1000 / 30; // 30 FPS update rate
-    this.movementBuffer = [];
-    this.bufferSize = 3; // Number of positions to buffer
-    this.updateTimeout = null;
-    this.lastPosition = null;
-    this.positionThreshold = 0.1; // Minimum position change to trigger update
+    this.updateRate = 1000 / 60;
+    this.maxRetries = 3;
+    this.retryCount = 0;
+    this.retryDelay = 2000;
+    this.roomSubscription = null;
+    this.username = null;
+  }
+  verifyRoomSubscription(roomId) {
+    console.log('Current room subscription:', this.roomSubscription);
+    console.log('Current room:', this.currentRoom);
+    console.log('Current player:', this.currentPlayer);
   }
 
-  connect(username, spawnX, spawnY, onConnected, onError) {
-    try {
-      this.client = new Client({
-        webSocketFactory: () => new SockJS('http://localhost:8080/ws'),
-        debug: function(str) {
-          console.log('STOMP: ' + str);
-        },
-        reconnectDelay: 5000,
-        heartbeatIncoming: 4000,
-        heartbeatOutgoing: 4000,
-        
-        onConnect: () => {
-          console.log('WebSocket Connected Successfully');
+  async connect(username, onConnected, onError) {
+    if (this.connectionPromise) {
+      return this.connectionPromise;
+    }
 
-          // Subscribe to player updates with buffering
-          this.client.subscribe('/topic/players', (message) => {
-            try {
-              const players = JSON.parse(message.body);
-              
-              // Process received player data with timestamps
-              Object.entries(players).forEach(([id, player]) => {
-                if (id !== this.currentPlayer?.id) {
-                  if (this.players[id]) {
-                    // Store previous position for interpolation
-                    player.prevX = this.players[id].x;
-                    player.prevY = this.players[id].y;
-                    player.prevTimestamp = this.players[id].timestamp;
-                  } else {
-                    player.prevX = player.x;
-                    player.prevY = player.y;
-                    player.prevTimestamp = Date.now();
-                  }
-                  
-                  player.timestamp = Date.now();
-                  this.players[id] = player;
-                }
-              });
+    this.connectionPromise = new Promise((resolve, reject) => {
+      try {
+        this.client = new Client({
+          webSocketFactory: () => new SockJS('http://localhost:8080/ws'),
+          debug: (str) => console.log('STOMP: ' + str),
+          reconnectDelay: this.retryDelay,
+          heartbeatIncoming: 4000,
+          heartbeatOutgoing: 4000,
+          
+          onConnect: () => {
+            console.log('WebSocket Connected Successfully');
+            this.username = username;
+            this.retryCount = 0;
+            resolve();
+            if (onConnected) onConnected();
+          },
 
-              // Throttled update callback
-              if (this.onPlayerUpdate) {
-                if (this.updateTimeout) {
-                  clearTimeout(this.updateTimeout);
-                }
-                
-                this.updateTimeout = setTimeout(() => {
-                  this.onPlayerUpdate(this.players);
-                }, this.updateRate);
-              }
-            } catch (error) {
-              console.error('Error parsing player update:', error);
-            }
-          });
+          onStompError: (frame) => {
+            console.error('STOMP error:', frame);
+            this.handleConnectionError(frame, reject, onError);
+          },
 
-          // Initialize current player
-          this.currentPlayer = {
-            id: Math.random().toString(36).substr(2, 9),
-            username: username,
-            x: spawnX,
-            y: spawnY,
-            direction: 'down',
-            isMoving: false,
-            animation: 'idle-down',
-            timestamp: Date.now()
-          };
+          onWebSocketError: (event) => {
+            console.error('WebSocket error:', event);
+            this.handleConnectionError(event, reject, onError);
+          },
 
-          this.lastPosition = { x: spawnX, y: spawnY };
+          onDisconnect: () => {
+            console.log('Disconnected from WebSocket');
+            this.cleanup();
+          }
+        });
 
-          // Register player with initial position
-          this.client.publish({
-            destination: '/app/register',
-            body: JSON.stringify(this.currentPlayer)
-          });
+        this.client.activate();
+      } catch (error) {
+        this.handleConnectionError(error, reject, onError);
+      }
+    });
 
-          if (onConnected) onConnected();
-        },
+    return this.connectionPromise;
+  }
 
-        onStompError: (frame) => {
-          console.error('STOMP error:', frame);
-          if (onError) onError(frame);
-        },
-
-        onWebSocketError: (event) => {
-          console.error('WebSocket error:', event);
-          if (onError) onError(event);
-        },
-
-        onDisconnect: () => {
-          console.log('Disconnected from WebSocket');
-          this.clearState();
-        }
-      });
-
-      this.client.activate();
-    } catch (error) {
-      console.error('Error initializing WebSocket:', error);
+  handleConnectionError(error, reject, onError) {
+    if (this.retryCount < this.maxRetries) {
+      this.retryCount++;
+      console.log(`Retrying connection (${this.retryCount}/${this.maxRetries})...`);
+      setTimeout(() => {
+        this.connectionPromise = null;
+        this.connect(this.username, null, onError);
+      }, this.retryDelay);
+    } else {
+      this.cleanup();
+      reject(error);
       if (onError) onError(error);
     }
   }
 
-  clearState() {
+  async createRoom(callback) {
+    try {
+        await this.ensureConnected();
+        
+        return new Promise((resolve) => {
+            const subscription = this.client.subscribe('/queue/roomCreated', (message) => {
+                const response = JSON.parse(message.body);
+                if (response.success) {
+                    this.currentRoom = response.roomId;
+                    this.subscribeToRoom(response.roomId);
+                    subscription.unsubscribe();
+                    if (callback) callback(response.roomId);
+                    resolve(response.roomId);
+                }
+            });
+
+            this.client.publish({
+                destination: '/app/createRoom',
+                body: JSON.stringify({ username: this.username })
+            });
+        });
+    } catch (error) {
+        console.error('Error creating room:', error);
+        throw error;
+    }
+  }
+
+  async joinRoom(roomId, callback) {
+    try {
+        await this.ensureConnected();
+
+        return new Promise((resolve, reject) => {
+            const subscription = this.client.subscribe('/queue/joinResult', async (message) => {
+                const response = JSON.parse(message.body);
+                subscription.unsubscribe();
+                
+                if (response.success) {
+                    this.currentRoom = roomId;
+                    // Don't unsubscribe from room updates
+                    await this.subscribeToRoom(roomId);
+                    if (callback) callback(true);
+                    resolve(true);
+                } else {
+                    if (callback) callback(false);
+                    reject(new Error('Invalid room ID'));
+                }
+            });
+
+            this.client.publish({
+                destination: '/app/joinRoom',
+                body: JSON.stringify({
+                    username: this.username,
+                    roomId: roomId
+                })
+            });
+        });
+    } catch (error) {
+        console.error('Error joining room:', error);
+        throw error;
+    }
+  }
+
+  async subscribeToRoom(roomId) {
+    console.log('Subscribing to room:', roomId);
+    if (this.client?.connected) {
+        if (this.roomSubscription) {
+            this.roomSubscription.unsubscribe();
+        }
+
+        return new Promise((resolve) => {
+            this.roomSubscription = this.client.subscribe(`/topic/rooms/${roomId}/players`, (message) => {
+              console.log('Received message for room:', roomId, message.body);
+                try {
+                    console.log('Received player update:', message.body);
+                    const players = JSON.parse(message.body);
+                    
+                    Object.entries(players).forEach(([id, player]) => {
+                      console.log('Processing player:', id, player);
+                        // Don't update current player's data from server
+                        if (id !== this.currentPlayer?.id) {
+                            if (this.players[id]) {
+                                player.prevX = this.players[id].x;
+                                player.prevY = this.players[id].y;
+                                player.lastUpdate = Date.now();
+                            } else {
+                                console.log('New player joined:', player.username);
+                                player.prevX = player.x;
+                                player.prevY = player.y;
+                                player.lastUpdate = Date.now();
+                            }
+                            this.players[id] = player;
+                        }
+                    });
+
+                    // Remove disconnected players
+                    Object.keys(this.players).forEach(id => {
+                        if (!players[id]) {
+                            console.log('Player disconnected:', this.players[id].username);
+                            delete this.players[id];
+                        }
+                    });
+
+                    if (this.onPlayerUpdate) {
+                        this.onPlayerUpdate(this.players);
+                    }
+                } catch (error) {
+                    console.error('Error handling player update:', error);
+                }
+            }, {
+                // Add STOMP subscription headers if needed
+                id: `room-subscription-${roomId}`
+            });
+
+            // Register the current player after subscription is ready
+            setTimeout(() => {
+                if (!this.currentPlayer) {
+                    this.currentPlayer = {
+                        id: Math.random().toString(36).substr(2, 9),
+                        username: this.username,
+                        x: 0,
+                        y: 0,
+                        direction: 'down',
+                        isMoving: false,
+                        animation: 'idle-down',
+                        lastUpdate: Date.now(),
+                        roomId: roomId
+                    };
+
+                    console.log('Registering player in room:', roomId, this.currentPlayer);
+                    
+                    this.client.publish({
+                        destination: '/app/register',
+                        body: JSON.stringify(this.currentPlayer)
+                    });
+                }
+                resolve();
+            }, 500);
+        });
+    }
+    return Promise.reject(new Error('WebSocket not connected'));
+  }
+
+  async ensureConnected() {
+    if (!this.client?.connected) {
+      if (!this.connectionPromise) {
+        throw new Error('WebSocket not initialized');
+      }
+      await this.connectionPromise;
+    }
+  }
+
+  cleanup() {
     this.players = {};
     this.currentPlayer = null;
-    this.movementBuffer = [];
-    this.lastPosition = null;
-    if (this.updateTimeout) {
-      clearTimeout(this.updateTimeout);
-      this.updateTimeout = null;
+    this.currentRoom = null;
+    this.connectionPromise = null;
+    if (this.roomSubscription) {
+      this.roomSubscription.unsubscribe();
+    }
+    this.stopMovementUpdates();
+  }
+
+  startMovementUpdates(playerData) {
+    if (!this.movementInterval) {
+      this.movementInterval = setInterval(() => {
+        const now = Date.now();
+        if (now - this.lastUpdate >= this.updateRate) {
+          this.sendMovementUpdate(playerData);
+          this.lastUpdate = now;
+        }
+      }, this.updateRate);
     }
   }
 
-  shouldUpdatePosition(newX, newY) {
-    if (!this.lastPosition) return true;
-    
-    const dx = Math.abs(newX - this.lastPosition.x);
-    const dy = Math.abs(newY - this.lastPosition.y);
-    
-    return dx > this.positionThreshold || dy > this.positionThreshold;
-  }
-
-  bufferMovement(movement) {
-    this.movementBuffer.push({
-      ...movement,
-      timestamp: Date.now()
-    });
-
-    if (this.movementBuffer.length >= this.bufferSize) {
-      this.flushMovementBuffer();
+  stopMovementUpdates() {
+    if (this.movementInterval) {
+      clearInterval(this.movementInterval);
+      this.movementInterval = null;
     }
-  }
-
-  flushMovementBuffer() {
-    if (this.movementBuffer.length === 0) return;
-
-    // Average out buffered movements
-    const averagedMovement = this.movementBuffer.reduce((acc, curr) => {
-      acc.x += curr.x;
-      acc.y += curr.y;
-      return acc;
-    }, { x: 0, y: 0 });
-
-    averagedMovement.x /= this.movementBuffer.length;
-    averagedMovement.y /= this.movementBuffer.length;
-
-    const lastMovement = this.movementBuffer[this.movementBuffer.length - 1];
-    
-    // Use the latest movement's properties with averaged position
-    const finalMovement = {
-      username: lastMovement.username,
-      x: averagedMovement.x,
-      y: averagedMovement.y,
-      direction: lastMovement.direction,
-      isMoving: lastMovement.isMoving,
-      timestamp: Date.now()
-    };
-
-    this.sendMovementUpdate(finalMovement);
-    this.movementBuffer = [];
   }
 
   sendMovementUpdate(playerData) {
-    if (this.client?.connected && this.currentPlayer) {
+    if (this.client?.connected && this.currentPlayer && this.currentRoom) {
       try {
-        // Only send update if position has changed significantly
-        if (this.shouldUpdatePosition(playerData.x, playerData.y)) {
-          const updatedPlayer = {
-            ...this.currentPlayer,
-            ...playerData,
-            animation: playerData.isMoving ? `run-${playerData.direction}` : `idle-${playerData.direction}`,
-            timestamp: Date.now()
-          };
-          
-          this.currentPlayer = updatedPlayer;
-          this.lastPosition = { x: playerData.x, y: playerData.y };
+        const updatedPlayer = {
+          ...this.currentPlayer,
+          ...playerData,
+          animation: playerData.isMoving ? `run-${playerData.direction}` : `idle-${playerData.direction}`,
+          timestamp: Date.now(),
+          roomId: this.currentRoom
+        };
+        
+        this.currentPlayer = updatedPlayer;
 
-          this.client.publish({
-            destination: '/app/move',
-            body: JSON.stringify(updatedPlayer)
-          });
-        }
+        this.client.publish({
+          destination: '/app/move',
+          body: JSON.stringify(updatedPlayer)
+        });
       } catch (error) {
         console.error('Error sending player movement:', error);
       }
@@ -203,18 +291,13 @@ class WebSocketService {
   }
 
   movePlayer(playerData) {
-    const now = Date.now();
-    
-    // If not moving, send update immediately
-    if (!playerData.isMoving) {
-      this.sendMovementUpdate(playerData);
-      return;
-    }
+    this.sendMovementUpdate(playerData);
 
-    // Buffer movement updates
-    if (now - this.lastUpdate >= this.updateRate) {
-      this.bufferMovement(playerData);
-      this.lastUpdate = now;
+    if (playerData.isMoving) {
+      this.startMovementUpdates(playerData);
+    } else {
+      this.stopMovementUpdates();
+      this.sendMovementUpdate(playerData);
     }
   }
 
@@ -223,18 +306,34 @@ class WebSocketService {
   }
 
   disconnect() {
-    if (this.client?.connected) {
-      try {
-        this.client.deactivate();
-        this.clearState();
-      } catch (error) {
-        console.error('Error disconnecting:', error);
-      }
+    this.stopMovementUpdates();
+    if (this.roomSubscription) {
+        try {
+            this.roomSubscription.unsubscribe();
+        } catch (error) {
+            console.error('Error unsubscribing:', error);
+        }
     }
+    if (this.client?.connected) {
+        try {
+            this.client.deactivate();
+        } catch (error) {
+            console.error('Error disconnecting:', error);
+        }
+    }
+    this.cleanup();
   }
 
   isConnected() {
     return this.client?.connected ?? false;
+  }
+
+  getCurrentRoom() {
+    return this.currentRoom;
+  }
+
+  getCurrentPlayer() {
+    return this.currentPlayer;
   }
 }
 

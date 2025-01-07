@@ -1,4 +1,5 @@
 package com.map.MetaHive.model;
+
 import java.util.UUID;
 
 public class Player {
@@ -11,6 +12,16 @@ public class Player {
     private boolean isMoving;
     private String animation;
     private long timestamp;
+    private String roomId; // New field for room management
+
+    // Add room getter and setter
+    public String getRoomId() {
+        return roomId;
+    }
+
+    public void setRoomId(String roomId) {
+        this.roomId = roomId;
+    }
 
     public Player() {
         this.id = UUID.randomUUID().toString();

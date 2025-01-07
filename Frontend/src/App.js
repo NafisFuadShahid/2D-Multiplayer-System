@@ -1,35 +1,32 @@
+// src/App.js
+
 import React, { useState } from 'react';
 import BootScreen from './components/BootScreen';
 import GameCanvas from './components/GameCanvas';
-import WebSocketService from './services/WebSocketService';
 
 function App() {
-  const [gameStarted, setGameStarted] = useState(false);
-  const [playerName, setPlayerName] = useState('');
+    const [gameStarted, setGameStarted] = useState(false);
+    const [playerInfo, setPlayerInfo] = useState({ username: '', roomId: '' });
 
-  const handleGameStart = (name) => {
-    setPlayerName(name);
-    setGameStarted(true);
-  };
+    /**
+     * Callback to initiate the game after successful room creation/joining.
+     * @param {string} username - The player's username.
+     * @param {string} roomId - The room ID.
+     */
+    const handleGameStart = (username, roomId) => {
+        setPlayerInfo({ username, roomId });
+        setGameStarted(true);
+    };
 
-  const handleGameExit = () => {
-    WebSocketService.disconnect();
-    setGameStarted(false);
-    setPlayerName('');
-  };
-
-  return (
-    <div>
-      {!gameStarted ? (
-        <BootScreen onGameStart={handleGameStart} />
-      ) : (
-        <GameCanvas 
-          playerName={playerName} 
-          onExit={handleGameExit} 
-        />
-      )}
-    </div>
-  );
+    return (
+        <>
+            {!gameStarted ? (
+                <BootScreen onGameStart={handleGameStart} />
+            ) : (
+                <GameCanvas playerName={playerInfo.username} roomId={playerInfo.roomId} />
+            )}
+        </>
+    );
 }
 
 export default App;

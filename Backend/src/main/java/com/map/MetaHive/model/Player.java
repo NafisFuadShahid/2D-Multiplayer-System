@@ -1,6 +1,6 @@
-package com.map.MetaHive.model;
+// src/main/java/com/map/MetaHive/model/Player.java
 
-import java.util.UUID;
+package com.map.MetaHive.model;
 
 public class Player {
     private String id;
@@ -14,7 +14,13 @@ public class Player {
     private long timestamp;
     private String roomId; // New field for room management
 
-    // Add room getter and setter
+    // Default constructor without UUID assignment
+    public Player() {
+        // No id assignment here
+    }
+
+    // Getters and setters
+
     public String getRoomId() {
         return roomId;
     }
@@ -23,11 +29,6 @@ public class Player {
         this.roomId = roomId;
     }
 
-    public Player() {
-        this.id = UUID.randomUUID().toString();
-    }
-
-    // Add new getters and setters
     public boolean getIsMoving() {
         return isMoving;
     }
@@ -52,7 +53,7 @@ public class Player {
         this.timestamp = timestamp;
     }
 
-    // Getters and setters
+    // Existing getters and setters
     public String getId() {
         return id;
     }

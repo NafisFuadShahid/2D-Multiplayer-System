@@ -1,3 +1,5 @@
+// src/main/java/com/map/MetaHive/service/GameSessionService.java
+
 package com.map.MetaHive.service;
 
 import com.map.MetaHive.model.Player;
@@ -44,8 +46,10 @@ public class GameSessionService {
         Room room = activeRooms.get(roomId);
         if (room != null) {
             room.addPlayer(player);
+            System.out.println("Player " + player.getUsername() + " joined room " + roomId);
             return true;
         }
+        System.out.println("Failed to join room: " + roomId + " - Room does not exist");
         return false;
     }
 
@@ -60,7 +64,7 @@ public class GameSessionService {
         }
     }
 
-    public Map<String, Player>getPlayersInRoom(String roomId) {
+    public Map<String, Player> getPlayersInRoom(String roomId) {
         Room room = activeRooms.get(roomId);
         if (room != null) {
             System.out.println("Getting players for room " + roomId + ": " + room.getPlayers().size() + " players");
@@ -82,15 +86,15 @@ public class GameSessionService {
         Room room = activeRooms.get(roomId);
         if (room != null) {
             room.removePlayer(playerId);
+            System.out.println("Player removed: " + playerId + " from room: " + roomId);
 
             // Remove room if empty
             if (room.getPlayers().isEmpty()) {
                 activeRooms.remove(roomId);
+                System.out.println("Room removed due to no players: " + roomId);
             }
         }
     }
-
-
 
     public boolean roomExists(String roomId) {
         return activeRooms.containsKey(roomId);

@@ -14,14 +14,16 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
+        // Enable a simple in-memory broker with destinations prefixed by /topic and /queue
         config.enableSimpleBroker("/topic", "/queue");
+        // Set application destination prefix for client messages
         config.setApplicationDestinationPrefixes("/app");
     }
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("*")
+                .setAllowedOriginPatterns("http://localhost:3000", "http://127.0.0.1:3000") // Specify allowed origins
                 .withSockJS();
     }
 
@@ -32,6 +34,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         config.setAllowCredentials(true); // Allow credentials (e.g., cookies, headers)
         config.addAllowedOrigin("http://localhost:3000"); // React development server
         config.addAllowedOrigin("http://127.0.0.1:3000"); // Alternate local development origin
+        // Add your production frontend URL below
+        // config.addAllowedOrigin("https://your-production-domain.com");
         config.addAllowedHeader("*"); // Allow all headers
         config.addAllowedMethod("*"); // Allow all HTTP methods (GET, POST, etc.)
 

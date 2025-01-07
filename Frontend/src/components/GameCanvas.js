@@ -1,359 +1,351 @@
+// src/components/GameCanvas.js
+
 import React, { useEffect, useRef } from 'react';
 import kaboom from 'kaboom';
 import WebSocketService from '../services/WebSocketService';
 
-function GameCanvas({ playerName }) {
-  const canvasRef = useRef(null);
-  const gameRef = useRef(null);
-  const otherPlayers = useRef({});
-  const playerRef = useRef(null);
-  const lastUpdateRef = useRef(0);
-  const UPDATE_INTERVAL = 1000 / 30; // 30 FPS update rate
-  const INTERPOLATION_DELAY = 100; // ms to interpolate between states
+function GameCanvas({ playerName, roomId }) {
+    const canvasRef = useRef(null);
+    const gameRef = useRef(null);
+    const otherPlayers = useRef({});
+    const playerRef = useRef(null);
+    const lastUpdateRef = useRef(0);
+    const UPDATE_INTERVAL = 1000 / 30; // 30 FPS update rate
+    const INTERPOLATION_DELAY = 50; // ms to interpolate between states
 
-  useEffect(() => {
-    const k = kaboom({
-      global: false,
-      width: 800,
-      height: 600,
-      scale: 2,
-      debug: false, // Disable debug in production
-      background: [0, 0, 0, 1],
-      canvas: canvasRef.current,
-      stretch: true,
-      letterbox: true,
-    });
-
-    gameRef.current = k;
-
-    k.loadSprite("player", "/ash.png", {
-      sliceX: 52,
-      sliceY: 1,
-      anims: {
-        "idle-right": { from: 0, to: 5, speed: 10, loop: true },
-        "idle-up": { from: 6, to: 11, speed: 10, loop: true },
-        "idle-left": { from: 12, to: 17, speed: 10, loop: true },
-        "idle-down": { from: 18, to: 23, speed: 10, loop: true },
-        "run-right": { from: 24, to: 29, speed: 15, loop: true },
-        "run-up": { from: 30, to: 35, speed: 15, loop: true },
-        "run-left": { from: 36, to: 41, speed: 15, loop: true },
-        "run-down": { from: 42, to: 47, speed: 15, loop: true },
-      },
-    });
-
-    k.loadSprite("map", "/mapfinal1.png");
-
-    const PLAYER_SPEED = 7200;
-
-    const startGame = async () => {
-      try {
-        const mapResponse = await fetch("/map.json");
-        if (!mapResponse.ok) throw new Error(`Failed to load map.json: ${mapResponse.statusText}`);
-        const mapData = await mapResponse.json();
-
-        const map = k.add([
-          k.pos(0, 0),
-          k.anchor("topleft"),
-        ]);
-
-        const mapSprite = map.add([
-          k.sprite("map"),
-          k.anchor("topleft"),
-        ]);
-
-        // Set up boundaries
-        const boundariesLayer = mapData.layers.find((layer) => layer.name === "boundaries");
-        if (boundariesLayer?.objects) {
-          boundariesLayer.objects.forEach((obj) => {
-            k.add([
-              k.rect(obj.width, obj.height),
-              k.pos(obj.x, obj.y),
-              k.area(),
-              k.body({ isStatic: true }),
-              k.opacity(0),
-              "boundary",
-            ]);
-          });
-        }
-
-        // Initialize player position
-        let spawnX = mapSprite.width / 2;
-        let spawnY = mapSprite.height / 2;
-
-        const spawnLayer = mapData.layers.find((layer) => layer.name === "spawnpoint");
-        if (spawnLayer?.objects?.[0]) {
-          spawnX = spawnLayer.objects[0].x;
-          spawnY = spawnLayer.objects[0].y;
-        }
-
-        const player = k.add([
-          k.sprite("player"),
-          k.pos(spawnX, spawnY),
-          k.area({ width: 32, height: 32 }),
-          k.anchor("center"),
-          k.body(),
-          {
-            speed: PLAYER_SPEED,
-            isMoving: false,
-            direction: "down",
-            lastServerPosition: { x: spawnX, y: spawnY },
-            pendingInputs: [],
-          },
-        ]);
-
-        playerRef.current = player;
-        player.play("idle-down");
-
-        const nameTag = k.add([
-          k.text(playerName, { size: 16, color: k.rgb(255, 255, 255) }),
-          k.pos(player.pos.x, player.pos.y - 20),
-          k.anchor("center"),
-          { followsPlayer: true },
-        ]);
-
-        // Improved player update handling with interpolation
-        // In GameCanvas.js, modify the WebSocket player update handler:
-
-        WebSocketService.setOnPlayerUpdate((players) => {
-          const currentTime = Date.now();
-          
-          Object.entries(players).forEach(([id, playerData]) => {
-              if (id !== playerName) {  // Only handle other players
-                  if (!otherPlayers.current[id]) {
-                      // Add new player
-                      const otherPlayer = k.add([
-                          k.sprite("player"),
-                          k.pos(playerData.x, playerData.y),
-                          k.area({ width: 32, height: 32 }),
-                          k.anchor("center"),
-                          { 
-                              id,
-                              username: playerData.username,
-                              isMoving: playerData.isMoving,
-                              direction: playerData.direction || "down",
-                              targetX: playerData.x,
-                              targetY: playerData.y,
-                              startX: playerData.x,
-                              startY: playerData.y,
-                              interpolationStart: currentTime,
-                          },
-                      ]);
-
-                      // Set initial animation
-                      otherPlayer.play(playerData.isMoving ? 
-                          `run-${playerData.direction}` : 
-                          `idle-${playerData.direction}`
-                      );
-
-                      const otherPlayerNameTag = k.add([
-                          k.text(playerData.username, { size: 16, color: k.rgb(255, 255, 255) }),
-                          k.pos(playerData.x, playerData.y - 20),
-                          k.anchor("center"),
-                      ]);
-
-                      otherPlayers.current[id] = {
-                          sprite: otherPlayer,
-                          nameTag: otherPlayerNameTag,
-                          lastUpdate: currentTime,
-                          direction: playerData.direction || "down",
-                      };
-                      
-                      console.log('Added new player:', id);
-                  } else {
-                      const otherPlayer = otherPlayers.current[id];
-                      
-                      // Update interpolation targets
-                      otherPlayer.sprite.startX = otherPlayer.sprite.pos.x;
-                      otherPlayer.sprite.startY = otherPlayer.sprite.pos.y;
-                      otherPlayer.sprite.targetX = playerData.x;
-                      otherPlayer.sprite.targetY = playerData.y;
-                      otherPlayer.sprite.interpolationStart = currentTime;
-                      
-                      // Update direction and animation
-                      otherPlayer.direction = playerData.direction || otherPlayer.direction;
-                      const targetAnim = playerData.isMoving ? 
-                          `run-${otherPlayer.direction}` : 
-                          `idle-${otherPlayer.direction}`;
-
-                      if (otherPlayer.sprite.curAnim !== targetAnim) {
-                          otherPlayer.sprite.play(targetAnim);
-                      }
-
-                      otherPlayer.lastUpdate = currentTime;
-                  }
-              }
-          });
-
-          // Clean up disconnected players
-          Object.keys(otherPlayers.current).forEach((id) => {
-              if (!players[id]) {
-                  console.log('Removing disconnected player:', id);
-                  otherPlayers.current[id].sprite.destroy();
-                  otherPlayers.current[id].nameTag.destroy();
-                  delete otherPlayers.current[id];
-              }
-          });
+    useEffect(() => {
+        // Initialize Kaboom
+        const k = kaboom({
+            global: false,
+            width: 800,
+            height: 600,
+            scale: 2,
+            debug: false, // Disable debug in production
+            background: [0, 0, 0, 1],
+            canvas: canvasRef.current,
+            stretch: true,
+            letterbox: true,
         });
 
-        // Optimized game loop with input prediction
-        k.onUpdate(() => {
-          // Update player position and movement
-          nameTag.pos.x = player.pos.x;
-          nameTag.pos.y = player.pos.y - 20;
-        
-          let dx = 0, dy = 0;
-          let newDirection = player.direction;
-          let moving = false;
-        
-          // Movement input check
-          if (k.isKeyDown("left")) {
-            dx = -1;
-            newDirection = "left";
-            moving = true;
-          } else if (k.isKeyDown("right")) {
-            dx = 1;
-            newDirection = "right";
-            moving = true;
-          }
-        
-          if (k.isKeyDown("up")) {
-            dy = -1;
-            newDirection = "up";
-            moving = true;
-          } else if (k.isKeyDown("down")) {
-            dy = 1;
-            newDirection = "down";
-            moving = true;
-          }
-        
-          // Apply movement with fixed speed (not affected by dt)
-          if (moving) {
-            if (dx !== 0 && dy !== 0) {
-              dx *= 0.707;
-              dy *= 0.707;
-            }
-        
-            // Move with fixed speed
-            const moveSpeed = PLAYER_SPEED / 60; // Convert to per-frame speed
-            player.move(dx * moveSpeed, dy * moveSpeed);
-        
-            // Check for animation update
-            if (!player.isMoving || player.direction !== newDirection) {
-              player.play(`run-${newDirection}`);
-              player.isMoving = true;
-              player.direction = newDirection;
-            }
-          } else if (player.isMoving) {
-            // Set to idle animation when not moving
-            player.play(`idle-${player.direction}`);
-            player.isMoving = false;
-          }
-        
-          // Only send updates if actually moving or state changed
-          const currentTime = Date.now();
-          if (currentTime - lastUpdateRef.current >= UPDATE_INTERVAL && 
-              (moving || player.isMoving)) {
-            WebSocketService.movePlayer({
-              username: playerName,
-              x: player.pos.x,
-              y: player.pos.y,
-              direction: newDirection,
-              isMoving: moving,
-              timestamp: currentTime,
-            });
-            lastUpdateRef.current = currentTime;
-          }
-        
-          // Handle other player movement and state updates
-          // ... (previous code remains the same until the other player update section in onUpdate)
+        gameRef.current = k;
 
-// Handle other player movement and state updates
-          Object.values(otherPlayers.current).forEach((otherPlayer) => {
-            const sprite = otherPlayer.sprite;
-            const timeSinceStart = currentTime - sprite.interpolationStart;
-            const interpolationProgress = Math.min(1, timeSinceStart / INTERPOLATION_DELAY);
-
-            // Smooth position interpolation
-            const newX = k.lerp(sprite.startX, sprite.targetX, interpolationProgress);
-            const newY = k.lerp(sprite.startY, sprite.targetY, interpolationProgress);
-
-            // Check if the player is actually moving
-            const isMoving = Math.abs(newX - sprite.pos.x) > 0.1 || Math.abs(newY - sprite.pos.y) > 0.1;
-
-            // Update position
-            sprite.pos.x = newX;
-            sprite.pos.y = newY;
-
-            // Update animation based on movement state
-            const currentAnim = sprite.curAnim;
-            const targetAnim = isMoving ? 
-              `run-${otherPlayer.direction}` : 
-              `idle-${otherPlayer.direction}`;
-
-            if (currentAnim !== targetAnim) {
-              sprite.play(targetAnim);
-            }
-
-            // Update nametag position
-            otherPlayer.nameTag.pos.x = sprite.pos.x;
-            otherPlayer.nameTag.pos.y = sprite.pos.y - 20;
-          });
-        
-          // Smooth camera follow
-          const targetCamPos = player.pos;
-          const currentCamPos = k.camPos();
-          const smoothSpeed = 0.1;
-        
-          k.camPos(
-            k.lerp(currentCamPos.x, targetCamPos.x, smoothSpeed),
-            k.lerp(currentCamPos.y, targetCamPos.y, smoothSpeed)
-          );
+        // Load sprites
+        k.loadSprite("player", "/ash.png", {
+            sliceX: 52,
+            sliceY: 1,
+            anims: {
+                "idle-right": { from: 0, to: 5, speed: 10, loop: true },
+                "idle-up": { from: 6, to: 11, speed: 10, loop: true },
+                "idle-left": { from: 12, to: 17, speed: 10, loop: true },
+                "idle-down": { from: 18, to: 23, speed: 10, loop: true },
+                "run-right": { from: 24, to: 29, speed: 15, loop: true },
+                "run-up": { from: 30, to: 35, speed: 15, loop: true },
+                "run-left": { from: 36, to: 41, speed: 15, loop: true },
+                "run-down": { from: 42, to: 47, speed: 15, loop: true },
+            },
         });
 
-        // Initial WebSocket connection
-        WebSocketService.connect(
-          playerName,
-          spawnX,
-          spawnY,
-          () => {
-            console.log("Connected to game server");
-          },
-          (error) => {
-            console.error("Failed to connect to game server:", error);
-          }
-        );
+        k.loadSprite("map", "/mapfinal1.png");
 
-      } catch (error) {
-        console.error("Error loading map:", error);
-      }
-    };
+        const PLAYER_SPEED = 3800; // Adjusted to a reasonable speed
 
-    startGame();
+        const startGame = async () => {
+            try {
+                // Load map data
+                const mapResponse = await fetch("/map.json");
+                if (!mapResponse.ok) throw new Error(`Failed to load map.json: ${mapResponse.statusText}`);
+                const mapData = await mapResponse.json();
 
-    return () => {
-      try {
-        if (gameRef.current) {
-          gameRef.current.destroy();
-          gameRef.current = null;
-        }
-        WebSocketService.disconnect();
-      } catch (error) {
-        console.error('Error destroying game:', error);
-      }
-    };
-  }, [playerName]);
+                const map = k.add([
+                    k.pos(0, 0),
+                    k.anchor("topleft"),
+                ]);
 
-  return (
-    <canvas 
-      ref={canvasRef} 
-      id="game" 
-      style={{ 
-        width: '100%', 
-        height: '100vh', 
-        display: 'block' 
-      }} 
-    />
-  );
+                const mapSprite = map.add([
+                    k.sprite("map"),
+                    k.anchor("topleft"),
+                ]);
+
+                // Set up boundaries
+                const boundariesLayer = mapData.layers.find((layer) => layer.name === "boundaries");
+                if (boundariesLayer?.objects) {
+                    boundariesLayer.objects.forEach((obj) => {
+                        k.add([
+                            k.rect(obj.width, obj.height),
+                            k.pos(obj.x, obj.y),
+                            k.area(),
+                            k.body({ isStatic: true }),
+                            k.opacity(0),
+                            "boundary",
+                        ]);
+                    });
+                }
+
+                // Initialize player position
+                let spawnX = mapSprite.width / 2;
+                let spawnY = mapSprite.height / 2;
+
+                const spawnLayer = mapData.layers.find((layer) => layer.name === "spawnpoint");
+                if (spawnLayer?.objects?.[0]) {
+                    spawnX = spawnLayer.objects[0].x;
+                    spawnY = spawnLayer.objects[0].y;
+                }
+
+                // Add player sprite
+                const player = k.add([
+                    k.sprite("player"),
+                    k.pos(spawnX, spawnY),
+                    k.area({ width: 32, height: 32 }),
+                    k.anchor("center"),
+                    k.body(),
+                    {
+                        speed: PLAYER_SPEED,
+                        isMoving: false,
+                        direction: "down",
+                        targetX: spawnX,
+                        targetY: spawnY,
+                        currentLerp: 1, // Initialize to 1 to prevent initial interpolation
+                    },
+                ]);
+
+                playerRef.current = player;
+                player.play("idle-down");
+
+                // Add player name tag
+                const nameTag = k.add([
+                    k.text(playerName, { size: 16, color: k.rgb(255, 255, 255) }),
+                    k.pos(player.pos.x, player.pos.y - 20),
+                    k.anchor("center"),
+                    { followsPlayer: true },
+                ]);
+
+                // Handle incoming player updates
+                WebSocketService.setOnPlayerUpdate((players) => {
+                    console.log('Received player updates:', players); // Enhanced logging
+                    const currentTime = Date.now();
+
+                    Object.entries(players).forEach(([id, playerData]) => {
+                        // Exclude our own player using UUID
+                        if (id !== WebSocketService.getCurrentPlayerId()) {
+                            if (!otherPlayers.current[id]) {
+                                // Add new player with interpolation state
+                                const otherPlayer = k.add([
+                                    k.sprite("player"),
+                                    k.pos(playerData.x, playerData.y),
+                                    k.area({ width: 32, height: 32 }),
+                                    k.anchor("center"),
+                                    {
+                                        id,
+                                        username: playerData.username,
+                                        isMoving: playerData.isMoving,
+                                        direction: playerData.direction || "down",
+                                        targetX: playerData.x,
+                                        targetY: playerData.y,
+                                        currentLerp: 1, // Initialize to 1
+                                    },
+                                ]);
+
+                                otherPlayer.play(playerData.isMoving ? 
+                                    `run-${playerData.direction || "down"}` : 
+                                    `idle-${playerData.direction || "down"}`
+                                );
+
+                                const otherPlayerNameTag = k.add([
+                                    k.text(playerData.username, { size: 16, color: k.rgb(255, 255, 255) }),
+                                    k.pos(playerData.x, playerData.y - 20),
+                                    k.anchor("center"),
+                                ]);
+
+                                otherPlayers.current[id] = {
+                                    sprite: otherPlayer,
+                                    nameTag: otherPlayerNameTag,
+                                    lastUpdate: currentTime,
+                                };
+                            } else {
+                                const otherPlayerObj = otherPlayers.current[id];
+                                if (otherPlayerObj) {
+                                    // Update target positions
+                                    otherPlayerObj.sprite.targetX = playerData.x;
+                                    otherPlayerObj.sprite.targetY = playerData.y;
+
+                                    // Reset interpolation progress
+                                    otherPlayerObj.sprite.currentLerp = 0;
+
+                                    // Update animation if direction changed
+                                    const targetAnim = playerData.isMoving ? 
+                                        `run-${playerData.direction || "down"}` : 
+                                        `idle-${playerData.direction || "down"}`;
+                                    
+                                    if (otherPlayerObj.sprite.curAnim !== targetAnim) {
+                                        otherPlayerObj.sprite.play(targetAnim);
+                                    }
+
+                                    otherPlayerObj.lastUpdate = currentTime;
+                                }
+                            }
+                        }
+                    });
+
+                    // Clean up disconnected players
+                    Object.keys(otherPlayers.current).forEach((id) => {
+                        if (!players[id]) {
+                            console.log('Removing disconnected player:', id);
+                            otherPlayers.current[id].sprite.destroy();
+                            otherPlayers.current[id].nameTag.destroy();
+                            delete otherPlayers.current[id];
+                        }
+                    });
+                });
+
+                // Start WebSocket connection and join/create room
+                WebSocketService.connect(
+                    playerName,
+                    () => {
+                        console.log("Connected to game server");
+                        if (roomId) {
+                            // Join existing room
+                            WebSocketService.joinRoom(roomId)
+                                .then(() => {
+                                    console.log(`Joined room: ${roomId}`);
+                                })
+                                .catch((error) => {
+                                    console.error('Failed to join room:', error);
+                                });
+                        } else {
+                            // Create new room
+                            WebSocketService.createRoom()
+                                .then((newRoomId) => {
+                                    console.log(`Created room: ${newRoomId}`);
+                                })
+                                .catch((error) => {
+                                    console.error('Failed to create room:', error);
+                                });
+                        }
+                    },
+                    (error) => {
+                        console.error("Failed to connect to game server:", error);
+                    }
+                );
+
+                // Game loop
+                k.onUpdate(() => {
+                    // Update name tag position
+                    nameTag.pos.x = player.pos.x;
+                    nameTag.pos.y = player.pos.y - 20;
+
+                    let dx = 0, dy = 0;
+                    let newDirection = player.direction;
+                    let moving = false;
+
+                    // Handle movement input
+                    if (k.isKeyDown("left")) {
+                        dx = -1;
+                        newDirection = "left";
+                        moving = true;
+                    }
+                    if (k.isKeyDown("right")) {
+                        dx = 1;
+                        newDirection = "right";
+                        moving = true;
+                    }
+                    if (k.isKeyDown("up")) {
+                        dy = -1;
+                        newDirection = "up";
+                        moving = true;
+                    }
+                    if (k.isKeyDown("down")) {
+                        dy = 1;
+                        newDirection = "down";
+                        moving = true;
+                    }
+
+                    // Normalize diagonal movement
+                    if (dx !== 0 && dy !== 0) {
+                        dx *= Math.SQRT1_2;
+                        dy *= Math.SQRT1_2;
+                    }
+
+                    // Move player
+                    if (moving) {
+                        player.move(dx * PLAYER_SPEED * k.dt(), dy * PLAYER_SPEED * k.dt());
+
+                        // Update animation if direction changed or started moving
+                        if (!player.isMoving || player.direction !== newDirection) {
+                            player.play(`run-${newDirection}`);
+                            player.isMoving = true;
+                            player.direction = newDirection;
+                        }
+                    } else if (player.isMoving) {
+                        // Set to idle animation when not moving
+                        player.play(`idle-${player.direction}`);
+                        player.isMoving = false;
+                    }
+
+                    // Send movement updates at specified intervals
+                    const currentTime = Date.now();
+                    if (currentTime - lastUpdateRef.current >= UPDATE_INTERVAL) {
+                        WebSocketService.movePlayer({
+                            id: WebSocketService.getCurrentPlayerId(), // Include UUID
+                            username: playerName,
+                            x: player.pos.x,
+                            y: player.pos.y,
+                            direction: newDirection,
+                            isMoving: moving,
+                            timestamp: currentTime,
+                        });
+                        lastUpdateRef.current = currentTime;
+                    }
+
+                    // Smooth interpolation for other players
+                    Object.values(otherPlayers.current).forEach((otherPlayer) => {
+                        const sprite = otherPlayer.sprite;
+                        const t = sprite.currentLerp;
+                        const lerpSpeed = 0.05; // Adjust for smoother/speedier transitions
+
+                        // Increment interpolation progress
+                        sprite.currentLerp += lerpSpeed;
+                        if (sprite.currentLerp > 1) sprite.currentLerp = 1;
+
+                        // Interpolate positions
+                        sprite.pos.x = k.lerp(sprite.pos.x, sprite.targetX, lerpSpeed);
+                        sprite.pos.y = k.lerp(sprite.pos.y, sprite.targetY, lerpSpeed);
+
+                        // Update nametag position
+                        otherPlayer.nameTag.pos.x = sprite.pos.x;
+                        otherPlayer.nameTag.pos.y = sprite.pos.y - 20;
+                    });
+
+                    // Smooth camera follow
+                    const targetCamPos = player.pos;
+                    const currentCamPos = k.camPos();
+                    const smoothSpeed = 0.1;
+
+                    k.camPos(
+                        k.lerp(currentCamPos.x, targetCamPos.x, smoothSpeed),
+                        k.lerp(currentCamPos.y, targetCamPos.y, smoothSpeed)
+                    );
+                });
+
+            } catch (error) {
+                console.error("Error loading map:", error);
+            }
+        };
+
+        startGame();
+
+    }, [playerName, roomId]);
+
+    return (
+        <canvas 
+            ref={canvasRef} 
+            id="game" 
+            style={{ 
+                width: '100%', 
+                height: '100vh', 
+                display: 'block' 
+            }} 
+        />
+    );
 }
 
 export default GameCanvas;

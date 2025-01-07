@@ -14,6 +14,8 @@ public class Room {
         this.createdAt = System.currentTimeMillis();
     }
 
+    // Getters
+
     public String getId() {
         return id;
     }
@@ -21,6 +23,12 @@ public class Room {
     public Map<String, Player> getPlayers() {
         return players;
     }
+
+    public long getCreatedAt() {
+        return createdAt;
+    }
+
+    // Player Management
 
     public void addPlayer(Player player) {
         players.put(player.getId(), player);
@@ -32,9 +40,5 @@ public class Room {
 
     public boolean hasPlayer(String playerId) {
         return players.containsKey(playerId);
-    }
-
-    public long getCreatedAt() {
-        return createdAt;
     }
 }

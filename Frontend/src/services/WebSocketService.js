@@ -49,7 +49,7 @@ class WebSocketService {
         this.connectionPromise = new Promise((resolve, reject) => {
             try {
                 this.client = new Client({
-                    webSocketFactory: () => new SockJS('http://localhost:8080/ws'),
+                    webSocketFactory: () => new SockJS('http://localhost:9502/ws'),
                     debug: (str) => console.log('STOMP: ' + str),
                     reconnectDelay: this.retryDelay,
                     heartbeatIncoming: 4000,

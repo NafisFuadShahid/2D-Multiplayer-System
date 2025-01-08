@@ -11,7 +11,7 @@ const Game = ({ playerName }) => {
   // Setup WebSocket connection and handle player updates
   const setupWebSocket = (playerName, onPlayerUpdate) => {
     const client = new Client({
-      webSocketFactory: () => new SockJS('http://localhost:8080/ws'),
+      webSocketFactory: () => new SockJS('http://localhost:9502/ws'),
       reconnectDelay: 5000,
       onConnect: () => {
         console.log('Connected to WebSocket server');

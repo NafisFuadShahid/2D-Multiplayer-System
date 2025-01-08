@@ -20,7 +20,7 @@ class WebSocketService {
         this.onPlayerUpdate = null;
         this.currentPlayer = null;
         this.currentRoom = null;
-        this.playerId = generateUUID(); // Generate UUID once
+        this.playerId = generateUUID();
         this.movementInterval = null;
         this.lastUpdate = Date.now();
         this.updateRate = 1000 / 60; // 60 FPS
@@ -29,6 +29,9 @@ class WebSocketService {
         this.retryDelay = 2000;
         this.roomSubscription = null;
         this.username = null;
+        this.debounceTimeout = null;
+        this.lastMoveTime = 0;
+        this.moveInterval = 1000 / 30; // 30Hz
     }
 
     /**
@@ -254,13 +257,31 @@ class WebSocketService {
      * @param {object} playerData - The movement data of the player.
      */
     sendMovementUpdate(playerData) {
+        const now = Date.now();
+        if (now - this.lastMoveTime < this.moveInterval) {
+            return; // Throttle updates to 30Hz
+        }
+        this.lastMoveTime = now;
+
         if (this.client?.connected && this.currentPlayer && this.currentRoom) {
             try {
+                const newAnimation = playerData.isMoving ? `run-${playerData.direction}` : `idle-${playerData.direction}`;
+
+                // Check if significant changes occurred
+                const hasChanged = 
+                    this.currentPlayer.x !== playerData.x ||
+                    this.currentPlayer.y !== playerData.y ||
+                    this.currentPlayer.direction !== playerData.direction ||
+                    this.currentPlayer.isMoving !== playerData.isMoving ||
+                    this.currentPlayer.animation !== newAnimation;
+
+                if (!hasChanged) return; // Skip if no significant changes
+
                 const updatedPlayer = {
                     ...this.currentPlayer,
                     ...playerData,
-                    animation: playerData.isMoving ? `run-${playerData.direction}` : `idle-${playerData.direction}`,
-                    timestamp: Date.now(),
+                    animation: newAnimation,
+                    timestamp: now,
                     roomId: this.currentRoom
                 };
 

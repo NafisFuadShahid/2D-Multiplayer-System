@@ -4,6 +4,8 @@
   "private": true,
   "dependencies": {
     "@stomp/stompjs": "^7.0.0",
+    "agora-rtc-react": "^2.3.0",
+    "agora-rtc-sdk-ng": "^4.23.0",
     "cra-template": "1.2.0",
     "kaboom": "^3000.1.17",
     "msgpack-lite": "^0.1.26",

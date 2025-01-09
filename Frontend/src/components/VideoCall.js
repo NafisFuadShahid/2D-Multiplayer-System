@@ -1,5 +1,3 @@
-// src/components/VideoCall.js
-
 import React, { useEffect, useRef, useState } from "react";
 import AgoraRTC from "agora-rtc-sdk-ng";
 import "./VideoCall.css"; // Import the CSS for styling
@@ -14,7 +12,6 @@ const VideoCall = () => {
   const clientRef = useRef(null);
   const localAudioTrackRef = useRef(null);
   const localVideoTrackRef = useRef(null);
-  const localPlayerRef = useRef(null);
   const remoteUsersRef = useRef([]);
   const remotePlayersRef = useRef({}); // To store remote player containers
 
@@ -97,9 +94,31 @@ const VideoCall = () => {
       await clientRef.current.join(appId, channel, token, uid);
       console.log("Successfully joined the channel");
 
-      // Create and publish local tracks
+      // Ensure any existing tracks are closed before creating new ones
+      if (localAudioTrackRef.current) {
+        localAudioTrackRef.current.close();
+        localAudioTrackRef.current = null;
+      }
+      if (localVideoTrackRef.current) {
+        localVideoTrackRef.current.close();
+        localVideoTrackRef.current = null;
+      }
+
+      // List available cameras and select default
+      const devices = await AgoraRTC.getCameras();
+      let selectedCamera = devices.find(device => device.isDefault) || devices[0];
+
+      if (!selectedCamera) {
+        console.warn("No camera devices found. Proceeding without video.");
+      }
+
+      // Create and publish local tracks with selected camera
       localAudioTrackRef.current = await AgoraRTC.createMicrophoneAudioTrack();
-      localVideoTrackRef.current = await AgoraRTC.createCameraVideoTrack();
+      if (selectedCamera) {
+        localVideoTrackRef.current = await AgoraRTC.createCameraVideoTrack({
+          cameraId: selectedCamera.deviceId
+        });
+      }
       await clientRef.current.publish([
         localAudioTrackRef.current,
         localVideoTrackRef.current,
@@ -107,7 +126,7 @@ const VideoCall = () => {
       console.log("Published local audio and video tracks");
 
       // Display Local Video
-      if (localVideoRef.current) {
+      if (localVideoRef.current && localVideoTrackRef.current) {
         localVideoTrackRef.current.play(localVideoRef.current);
       }
 
@@ -120,12 +139,20 @@ const VideoCall = () => {
   // Leave the channel and clean up
   const leaveVideo = async () => {
     try {
-      await clientRef.current.leave();
-      console.log("Left the channel");
+      if (clientRef.current) {
+        await clientRef.current.leave();
+        console.log("Left the channel");
+      }
 
-      // Close local tracks
-      localAudioTrackRef.current && localAudioTrackRef.current.close();
-      localVideoTrackRef.current && localVideoTrackRef.current.close();
+      // Close and nullify local tracks
+      if (localAudioTrackRef.current) {
+        localAudioTrackRef.current.close();
+        localAudioTrackRef.current = null;
+      }
+      if (localVideoTrackRef.current) {
+        localVideoTrackRef.current.close();
+        localVideoTrackRef.current = null;
+      }
 
       // Stop local video
       if (localVideoRef.current) {
@@ -211,3 +238,118 @@ const VideoCall = () => {
 };
 
 export default VideoCall;
+// import AgoraRTC from "agora-rtc-sdk-ng";
+
+// let rtc = {
+//   localAudioTrack: null,
+//   localVideoTrack: null,
+//   client: null,
+// };
+
+// const options = {
+//   appId: "aa57b40426c74add85bb5dcae4557ef6", // Your App ID
+//   channel: "hello", // Channel name
+//   token: null, // Temp token
+//   uid: null, // User ID
+// };
+
+// // Initialize the AgoraRTC client
+// export function initializeClient() {
+//   if (!rtc.client) {
+//     rtc.client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+//     setupEventListeners();
+//     console.log("AgoraRTC client initialized");
+//   }
+// }
+
+// // Handle remote user events
+// function setupEventListeners() {
+//   rtc.client.on("user-published", async (user, mediaType) => {
+//     await rtc.client.subscribe(user, mediaType);
+//     console.log("Subscribe success");
+
+//     if (mediaType === "video") {
+//       displayRemoteVideo(user);
+//     }
+
+//     if (mediaType === "audio") {
+//       user.audioTrack.play();
+//     }
+//   });
+
+//   rtc.client.on("user-unpublished", (user) => {
+//     const remotePlayerContainer = document.getElementById(user.uid);
+//     remotePlayerContainer && remotePlayerContainer.remove();
+//   });
+// }
+
+// // Display remote video
+// function displayRemoteVideo(user) {
+//   const remoteVideoTrack = user.videoTrack;
+//   const remotePlayerContainer = document.createElement("div");
+//   remotePlayerContainer.id = user.uid.toString();
+//   remotePlayerContainer.textContent = `Remote user ${user.uid}`;
+//   remotePlayerContainer.style.width = "640px";
+//   remotePlayerContainer.style.height = "480px";
+//   document.body.append(remotePlayerContainer);
+//   remoteVideoTrack.play(remotePlayerContainer);
+// }
+
+// // Join a channel and publish local media
+// export async function joinVideo() {
+//   initializeClient(); // Ensure the client is initialized
+
+//   if (!rtc.client) {
+//     console.error("RTC client is not initialized");
+//     return;
+//   }
+
+//   await rtc.client.join(
+//     options.appId,
+//     options.channel,
+//     options.token,
+//     options.uid
+//   );
+//   await createAndPublishLocalTracks();
+//   displayLocalVideo();
+//   console.log("Publish success!");
+// }
+
+// // Publish local audio and video tracks
+// async function createAndPublishLocalTracks() {
+//   rtc.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+//   rtc.localVideoTrack = await AgoraRTC.createCameraVideoTrack();
+//   await rtc.client.publish([rtc.localAudioTrack, rtc.localVideoTrack]);
+// }
+
+// // Display local video
+// function displayLocalVideo() {
+//   const localPlayerContainer = document.createElement("div");
+//   localPlayerContainer.id = options.uid;
+//   localPlayerContainer.textContent = `Local user ${options.uid}`;
+//   localPlayerContainer.style.width = "640px";
+//   localPlayerContainer.style.height = "480px";
+//   document.body.append(localPlayerContainer);
+//   rtc.localVideoTrack.play(localPlayerContainer);
+// }
+
+// // Leave the channel and clean up
+// export async function leaveVideo() {
+//   if (rtc.localAudioTrack) rtc.localAudioTrack.close();
+//   if (rtc.localVideoTrack) rtc.localVideoTrack.close();
+
+//   const localPlayerContainer = document.getElementById(options.uid);
+//   if (localPlayerContainer) localPlayerContainer.remove();
+
+//   rtc.client.remoteUsers.forEach((user) => {
+//     const playerContainer = document.getElementById(user.uid);
+//     if (playerContainer) playerContainer.remove();
+//   });
+
+//   if (rtc.client) await rtc.client.leave();
+// }
+
+// // Start the basic call
+// export function startBasicCall() {
+//   initializeClient();
+// }

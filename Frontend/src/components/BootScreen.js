@@ -1,5 +1,3 @@
-// src/components/BootScreen.js
-
 import React, { useState, useEffect } from 'react';
 import WebSocketService from '../services/WebSocketService';
 

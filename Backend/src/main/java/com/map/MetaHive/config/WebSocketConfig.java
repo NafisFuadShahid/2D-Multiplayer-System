@@ -1,3 +1,5 @@
+// src/main/java/com/map/MetaHive/config/WebSocketConfig.java
+
 package com.map.MetaHive.config;
 
 import org.springframework.context.annotation.Configuration;

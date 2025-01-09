@@ -1,5 +1,3 @@
-// src/services/WebSocketService.js
-
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 
@@ -375,7 +373,7 @@ class WebSocketService {
         this.players = {};
         this.currentPlayer = null;
         this.currentRoom = null;
-        // Removed: this.playerId = null; // Do not set playerId to null
+        // Do not set playerId to null
         this.connectionPromise = null;
     }
 
